@@ -1,0 +1,123 @@
+import numpy as np  
+import datetime as dt 
+from sqlalchemy.ext.automap import automap_base 
+from sqlalchemy.orm import Session 
+from sqlalchemy import create_engine, func, and_
+from flask import Flask, jsonify
+
+#Db Set up 
+
+engine = create_engine("sqlite:///Resources/hawaii.sqlite")
+
+#DB reflection 
+first = automap_base()
+#Table Reflect
+first.prepare(engine, reflect=True)
+
+#Save reference
+measurement = first.classes.measurement
+station = first.classes.station
+
+#Setup Flask 
+app=Flask(__name__)
+
+#Flask Routes
+
+@app.route("/")
+def welcome():
+    return(
+        f"Hawaii Climate Analysis"
+        f"API Routes:<br/>"
+        f"/api/v1.0/precipitation<br/>"
+        f"/api/v1.0/stations<br/>"
+        f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/&lt;start&gt;<br/>"
+        f"/api/v1.0/&lt;start&gt;/&lt;end&gt;"
+    )
+
+@app.route("/api/v1.0/precipitation")
+def precipiation():
+    session = Session(engine)
+
+    results = session.query(measurement.date, measurement.rain).\
+            order_by(measurement.date).all()
+    
+    rain_dates = []
+
+    for date,rain in results:
+        new_dict = {}
+        new_dict[date] = rain
+        rain_dates.append(new_dict)
+    
+    session.close()
+
+    return jsonify(rain_dates)
+
+@app.route("/api/v1.0/stations")
+def stations():
+    session=Session(engine)
+
+    stations = {}
+
+    results = session.query(station.station, station.name).all()
+    for d, name in results:
+        stations[d] = name
+    
+    session.close()
+    return jsonify(stations)
+
+@app.route("/api/v1.0/tobs")
+def tobs():
+    session=Session(engine)
+
+    #Date data 
+    ld = session.query(measurement.date).order_by(measurement.date.desc()).first()
+    past_year = (dt.datetime.strptime(ld[0],'%Y-%m-%d') \
+                - dt.timedelta(days=365)).strftime('%Y-%m-%d')
+    
+    #Dates and Temps
+    results = session.query(measurement.date,measurement.tobs).\
+            filter(measurement.date >= past_year).\
+            order_by(measurement.date).all()
+    
+    #Jsonify/Dictionairy clean up 
+    results_tobs = []
+
+    for date,tobs in results: 
+        new_dict = {}
+        new_dict[date] = tobs
+        results_tobs.append(new_dict)
+    
+    session.close()
+
+    return jsonify(results_tobs)
+
+@app.route("/api/v1.0/<start>")
+def temp_range_start(start): 
+    
+    #define any start date in '%Y-%m-%d' when querying API URL
+  80  session = Session(engine)
+    
+    temp_list = []
+    
+    results = session.query(measurement.date,func.min(measurement.tobs),func.avg(measurement.tobs),func.max(measurement.tobs)).\
+    filter(measurement.date >= start).group_by(measurement.date).all()
+    
+    for date, min, avg, max in results:
+        new_dict = {}
+        new_dict["Date"] = date
+        new_dict["TMIN"] = min
+        new_dict["TAVG"] = avg
+        new_dict["TMAX"] = max
+        temp_list.append(new_dict)
+
+    session.close() 
+    return jsonify(temp_list)
+
+@app.route("/api/v1.0/<start>/<end>")
+def temp_range_start_end(start,end):
+
+    session = Session(engine)
+
+    temp_list = []
+ 
